@@ -1,4 +1,10 @@
-﻿using System.Collections;
+﻿/*
+ * Stijn - @DV_Stijn
+ * 
+ * Entry for the OnScriptJam https://itch.io/jam/osj 
+ */
+
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
