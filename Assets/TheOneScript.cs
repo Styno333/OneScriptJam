@@ -13,43 +13,105 @@ public class TheOneScript : MonoBehaviour
     [Header("Player")]
     [SerializeField]
     private AgentStartStats _playerStartStats;
-    [SerializeField]
-    private Player _player;
+
+    public static Player ActivePlayer;
 
     [Header("Enemies")]
     [SerializeField] private AgentStartStats _enemyStartStats;
-    [SerializeField] private List<Enemy> _enemies = new List<Enemy>();
+    public static List<Enemy> Enemies = new List<Enemy>();
 
-    public static float LevelModifier = 1;
+    // -- Level variables -- 
+    public static int CurrentLevel = 0;
+    public static float LevelModifier
+    {
+        get
+        {
+            return 1 + CurrentLevel * 1.2f;
+        }
+    }
+    [SerializeField] private LevelSettings[] _levels;
+
+    private Transform _floor;
+    // -- end level variables --
+
 
     void Start()
     {
         // spawn floor
-        GameObject.CreatePrimitive(PrimitiveType.Plane);
-
         NewGame();
     }
 
     void Update()
     {
-        _player.Movement();
+        ActivePlayer.Movement();
+
+        foreach (var agent in Enemies)
+        {
+            agent.Movement();
+        }
+
+        if (Input.GetKeyDown(KeyCode.Space))
+        {
+
+        }
     }
 
     private void NewGame()
     {
-        // spawn player
-        _player = new Player(Vector3.zero, _playerStartStats);
+        // Reset stats
+        CurrentLevel = 0;
 
+        // Spawn level
+        SpawnLevel();
+
+        // Spawn player
+        ActivePlayer = new Player(Vector3.zero, _playerStartStats);
+
+        // Spawn enemies
         SpawnEnemies();
+    }
+
+    private void SpawnLevel()
+    {
+        if(_floor == null)
+        {
+            _floor = GameObject.CreatePrimitive(PrimitiveType.Plane).transform;
+            _floor.name = "Floor";
+        }
+
+        _floor.localScale = Vector3.one * _levels[CurrentLevel].MapSize;
     }
 
     private void SpawnEnemies()
     {
-        for (int i = 0; i < 8; i++)
+        for (int i = 0; i < _levels[CurrentLevel].AmountOfEnemies; i++)
         {
-            _enemies.Add(new Enemy(new Vector3(4 - i , 0, -4.5f), _enemyStartStats));
+            Enemies.Add(new Enemy(new Vector3(4 - i , 0, 4f), _enemyStartStats));
         }
     }
+
+    public static void EnemyDied(Enemy e)
+    {
+        Enemies.Remove(e);
+        if(Enemies.Count <= 0)
+        {
+            // level completed;
+        }
+    }
+
+    #region Level helper objects
+
+    [System.Serializable]
+    public struct LevelSettings
+    {
+        public float MapSize;
+        public int AmountOfEnemies;
+        public float MaxWeightToContinue;
+    }
+
+    #endregion
+
+    #region Agent helper objects
 
     [System.Serializable]
     public struct AgentStartStats
@@ -89,11 +151,31 @@ public class TheOneScript : MonoBehaviour
         {
 
         }
+
+        public virtual void Die()
+        {
+            
+        }
+
+        public virtual void GetHit(float damage)
+        {
+            if(CurrentHealth - damage <= 0)
+            {
+                CurrentHealth = 0;
+                Die();
+            }
+            else
+            {
+                CurrentHealth -= damage;
+            }
+        }
     }
 
     [System.Serializable]
     public class Player : Agent
     {
+        public float Weight = 0;
+
         public Player(Vector3 pos, AgentStartStats stats) : base(pos, stats)
         {
             MyTrans.name = "Player";
@@ -115,7 +197,27 @@ public class TheOneScript : MonoBehaviour
         public Enemy(Vector3 pos, AgentStartStats stats) : base (pos, stats)
         {
             MyTrans.name = "enemy";
+            MaxHealth = CurrentHealth *= LevelModifier;
+        }
 
+        public override void Die()
+        {
+            base.Die();
+
+            EnemyDied(this);
+            MyTrans.GetComponent<Collider>().enabled = false;
+            Destroy(MyTrans.gameObject, 2);
+        }
+
+        public override void Movement()
+        {
+            base.Movement();
+
+            var dir = (ActivePlayer.MyTrans.position - MyTrans.position).normalized;
+            dir = dir.normalized * MovementSpeed * Time.deltaTime;
+            MyRigid.MovePosition(MyTrans.position + dir);
         }
     }
+
+    #endregion
 }
