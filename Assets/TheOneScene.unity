@@ -243,23 +243,21 @@ MonoBehaviour:
   _playerStartStats:
     StartHealth: 100
     StartSpeed: 5
-  _player:
-    MaxHealth: 0
-    CurrentHealth: 0
-    MovementSpeed: 5
-    MyTrans: {fileID: 0}
-    MyRigid: {fileID: 0}
+    Mat: {fileID: 2100000, guid: 89d9aab8e63ba974cb5f35890be9830f, type: 2}
   _enemyStartStats:
     StartHealth: 50
     StartSpeed: 3
-  _enemies: []
+    Mat: {fileID: 2100000, guid: 237374a51ddae284bb29ba9d6ec358bb, type: 2}
   _levels:
   - MapSize: 1
     AmountOfEnemies: 2
+    MaxWeightToContinue: 0
   - MapSize: 1.5
     AmountOfEnemies: 4
+    MaxWeightToContinue: 0
   - MapSize: 2
     AmountOfEnemies: 6
+    MaxWeightToContinue: 0
 --- !u!4 &786873216
 Transform:
   m_ObjectHideFlags: 0

@@ -7,9 +7,13 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using System.Linq;
+using UnityEngine.Events;
 
 public class TheOneScript : MonoBehaviour
 {
+    public static TheOneScript ONE;
+
     [Header("Player")]
     [SerializeField]
     private AgentStartStats _playerStartStats;
@@ -18,7 +22,7 @@ public class TheOneScript : MonoBehaviour
 
     [Header("Enemies")]
     [SerializeField] private AgentStartStats _enemyStartStats;
-    public static List<Enemy> Enemies = new List<Enemy>();
+    public List<Enemy> Enemies = new List<Enemy>();
 
     // -- Level variables -- 
     public static int CurrentLevel = 0;
@@ -34,16 +38,24 @@ public class TheOneScript : MonoBehaviour
     private Transform _floor;
     // -- end level variables --
 
+    public Camera Cam;
+
 
     void Start()
     {
-        // spawn floor
+        // setup
+        ONE = this;
+        Cam = Camera.main;
+        Cam.transform.position = new Vector3(0, 5, -7);
+
+        // spawn level
         NewGame();
     }
 
     void Update()
     {
         ActivePlayer.Movement();
+        ActivePlayer.Attack();
 
         foreach (var agent in Enemies)
         {
@@ -52,8 +64,13 @@ public class TheOneScript : MonoBehaviour
 
         if (Input.GetKeyDown(KeyCode.Space))
         {
-
+            
         }
+    }
+
+    private void FixedUpdate()
+    {
+        CameraMovement();
     }
 
     private void NewGame()
@@ -69,6 +86,19 @@ public class TheOneScript : MonoBehaviour
 
         // Spawn enemies
         SpawnEnemies();
+    }
+
+    private void LevelCompleted()
+    {
+        if(CurrentLevel < _levels.Length - 1)
+        {
+            CurrentLevel++;
+            SpawnEnemies();
+        }
+        else
+        {
+            // game over!
+        }
     }
 
     private void SpawnLevel()
@@ -90,13 +120,27 @@ public class TheOneScript : MonoBehaviour
         }
     }
 
-    public static void EnemyDied(Enemy e)
+    public void EnemyDied(Enemy e)
     {
         Enemies.Remove(e);
         if(Enemies.Count <= 0)
         {
             // level completed;
+            LevelCompleted();
         }
+    }
+
+    /// <summary>
+    /// Camera movement logic. Call each fixed update
+    /// </summary>
+    private void CameraMovement()
+    {
+        Vector3 offset = new Vector3(0, 5, -7);
+        Vector3 newPos = ActivePlayer.MyTrans.position + offset;
+        Vector3 smooth = Vector3.Lerp(Cam.transform.position, newPos, 0.25f);
+        Cam.transform.position = smooth;
+
+        //Cam.transform.LookAt(ActivePlayer.MyTrans);
     }
 
     #region Level helper objects
@@ -118,7 +162,7 @@ public class TheOneScript : MonoBehaviour
     {
         public float StartHealth;
         public float StartSpeed;
-
+        public Material Mat;
     }
 
     [System.Serializable]
@@ -137,6 +181,7 @@ public class TheOneScript : MonoBehaviour
             MovementSpeed = stats.StartSpeed;
 
             Draw(pos);
+            MyTrans.GetComponent<Renderer>().material = stats.Mat;
         }
 
         public virtual void Draw(Vector3 pos)
@@ -189,6 +234,33 @@ public class TheOneScript : MonoBehaviour
             input = input.normalized * MovementSpeed * Time.deltaTime;
             MyRigid.MovePosition(MyTrans.position + input);
         }
+
+        public void Attack()
+        {
+            if(Input.GetMouseButton(0))
+            {
+                // raycast from center of player towards mouse
+                Plane f = new Plane(Vector3.up, 0);
+                Ray r = Camera.main.ScreenPointToRay(Input.mousePosition);
+                float enter;
+
+                if (f.Raycast(r, out enter))
+                {
+                    var pos = r.GetPoint(enter) + Vector3.up * 0.5f;
+                    var dir = (pos - MyTrans.position).normalized;
+
+                    RaycastHit hit;
+                    if(Physics.Raycast(MyTrans.position, dir, out hit, 10))
+                    {
+                        Debug.Log("Hit " + hit.collider.gameObject.name, hit.collider.gameObject) ;
+
+                        var enemy = ONE.Enemies.First(x => x.MyTrans == hit.collider.transform);
+                        enemy.GetHit(1);
+                        enemy.MyTrans.GetComponent<Rigidbody>().AddForce(dir * 30);
+                    }
+                }
+            }
+        }
     }
 
     [System.Serializable]
@@ -200,11 +272,18 @@ public class TheOneScript : MonoBehaviour
             MaxHealth = CurrentHealth *= LevelModifier;
         }
 
+        public override void GetHit(float damage)
+        {
+            base.GetHit(damage);
+
+            ONE.StartCoroutine(HitAnimation());
+        }
+
         public override void Die()
         {
             base.Die();
 
-            EnemyDied(this);
+            ONE.EnemyDied(this);
             MyTrans.GetComponent<Collider>().enabled = false;
             Destroy(MyTrans.gameObject, 2);
         }
@@ -216,6 +295,14 @@ public class TheOneScript : MonoBehaviour
             var dir = (ActivePlayer.MyTrans.position - MyTrans.position).normalized;
             dir = dir.normalized * MovementSpeed * Time.deltaTime;
             MyRigid.MovePosition(MyTrans.position + dir);
+        }
+
+        private IEnumerator HitAnimation()
+        {
+            var delay = new WaitForSeconds(0.05f);
+            MyTrans.localScale = new Vector3(0.75f, 1.25f, 0.75f);
+            yield return delay;
+            MyTrans.localScale = Vector3.one;
         }
     }
 
