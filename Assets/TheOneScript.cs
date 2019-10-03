@@ -9,10 +9,23 @@ using System.Collections.Generic;
 using UnityEngine;
 using System.Linq;
 using UnityEngine.Events;
+using UnityEngine.UI;
 
 public class TheOneScript : MonoBehaviour
 {
     public static TheOneScript ONE;
+    public static Plane FloorPlane = new Plane(Vector3.up, 0);
+
+
+    private bool _isPlaying = false;
+    public bool IsPlaying
+    {
+        get { return _isPlaying; }
+        set
+        {
+            _isPlaying = value;
+        }
+    }
 
     [Header("Player")]
     [SerializeField]
@@ -22,7 +35,7 @@ public class TheOneScript : MonoBehaviour
 
     [Header("Enemies")]
     [SerializeField] private AgentStartStats _enemyStartStats;
-    public List<Enemy> Enemies = new List<Enemy>();
+    public List<Agent> Enemies = new List<Agent>();
 
     // -- Level variables -- 
     public static int CurrentLevel = 0;
@@ -38,22 +51,101 @@ public class TheOneScript : MonoBehaviour
     private Transform _floor;
     // -- end level variables --
 
-    public Camera Cam;
+    // -- UI variables
+    private Font _font;
+    private Canvas _canvMain;
+    private Text _txtLevel;
+    private Text _txtEnemiesLeft;
+
+    // -- end UI variables
+
+    public static Camera Cam;
 
 
     void Start()
     {
         // setup
         ONE = this;
-        Cam = Camera.main;
-        Cam.transform.position = new Vector3(0, 5, -7);
+        Cam = CreateNewCamera();
+        CreateNewLight();
+        CreateUI();
 
         // spawn level
         NewGame();
     }
 
+    #region Scene setup
+    /// <summary>
+    /// Create a new camera for the scene
+    /// </summary>
+    /// <returns></returns>
+    private Camera CreateNewCamera()
+    {
+        var cam = (new GameObject()).AddComponent<Camera>();
+        cam.transform.eulerAngles = new Vector3(40, 0, 0);
+        cam.transform.position = new Vector3(0, 5, -7);
+        cam.gameObject.AddComponent<AudioListener>();
+        cam.name = "Camera";
+        return cam;
+    }
+    /// <summary>
+    /// Created a new directional light for the scene
+    /// </summary>
+    /// <returns></returns>
+    private Light CreateNewLight()
+    {
+        var light = (new GameObject()).AddComponent<Light>();
+        light.type = LightType.Directional;
+        light.transform.eulerAngles = new Vector3(50, -30, 0);
+        light.color = new Color(1, 0.95f, 0.84f, 1f);
+        light.name = "Light";
+        return light;
+    }
+
+    #endregion
+
+    #region UI
+
+    private void CreateUI()
+    {
+        _font = Resources.GetBuiltinResource(typeof(Font), "Arial.ttf") as Font;
+
+        // add event system
+        (new GameObject()).AddComponent<UnityEngine.EventSystems.EventSystem>().name = "EventSystem";
+        // create canvas
+        var canv = (new GameObject()).AddComponent<Canvas>();
+        canv.name = "Canvas";
+        canv.renderMode = RenderMode.ScreenSpaceOverlay;
+        canv.gameObject.AddComponent<CanvasScaler>();
+        canv.gameObject.AddComponent<CanvasRenderer>();
+        // add text labels
+        _txtLevel = AddtextLabel(canv.transform, -40, "LEVEL: 0");
+        _txtEnemiesLeft = AddtextLabel(canv.transform, -70, "ENEMIES LEFT: 0");
+    }
+
+    private Text AddtextLabel(Transform canv, float height, string text)
+    {
+        var txt = (new GameObject()).AddComponent<Text>();
+        txt.transform.SetParent(canv.transform);
+        txt.font = _font;
+        txt.fontStyle = FontStyle.Bold;
+        txt.text = text;
+        txt.rectTransform.anchoredPosition = new Vector2(40, height);
+
+        txt.rectTransform.pivot = Vector2.up;
+        txt.rectTransform.anchorMin = Vector2.zero;
+        txt.rectTransform.anchorMax = Vector2.one;
+
+        return txt;
+    }
+
+
+    #endregion
+
     void Update()
     {
+        if (!_isPlaying) return;
+
         ActivePlayer.Movement();
         ActivePlayer.Attack();
 
@@ -61,15 +153,12 @@ public class TheOneScript : MonoBehaviour
         {
             agent.Movement();
         }
-
-        if (Input.GetKeyDown(KeyCode.Space))
-        {
-            
-        }
     }
 
     private void FixedUpdate()
     {
+        if (!_isPlaying) return;
+
         CameraMovement();
     }
 
@@ -77,6 +166,7 @@ public class TheOneScript : MonoBehaviour
     {
         // Reset stats
         CurrentLevel = 0;
+        _txtLevel.text = "Level " + 0;
 
         // Spawn level
         SpawnLevel();
@@ -86,24 +176,35 @@ public class TheOneScript : MonoBehaviour
 
         // Spawn enemies
         SpawnEnemies();
+
+        // set is playing
+        IsPlaying = true;
+
+        // start routines
+        StartCoroutine(CheckForDroppedAgentsRoutine()); // checks for out of bounds agents
     }
 
+    /// <summary>
+    /// Call when all enemies have been killed
+    /// </summary>
     private void LevelCompleted()
     {
-        if(CurrentLevel < _levels.Length - 1)
+        if (CurrentLevel < _levels.Length - 1)
         {
             CurrentLevel++;
             SpawnEnemies();
+            _txtLevel.text = "Level " + CurrentLevel;
         }
         else
         {
             // game over!
+            GameOver(true);
         }
     }
 
     private void SpawnLevel()
     {
-        if(_floor == null)
+        if (_floor == null)
         {
             _floor = GameObject.CreatePrimitive(PrimitiveType.Plane).transform;
             _floor.name = "Floor";
@@ -116,17 +217,28 @@ public class TheOneScript : MonoBehaviour
     {
         for (int i = 0; i < _levels[CurrentLevel].AmountOfEnemies; i++)
         {
-            Enemies.Add(new Enemy(new Vector3(4 - i , 0, 4f), _enemyStartStats));
+            Enemies.Add(new ChargeEnemy(new Vector3(4 - i, 0, 4f), _enemyStartStats));
         }
+
+        _txtEnemiesLeft.text =_levels[CurrentLevel].AmountOfEnemies + " enemies left";
     }
 
-    public void EnemyDied(Enemy e)
+    public void AgentDied(Agent e)
     {
-        Enemies.Remove(e);
-        if(Enemies.Count <= 0)
+        if (e is Player)
         {
-            // level completed;
-            LevelCompleted();
+            // Game over
+            GameOver(false);
+        }
+        else
+        {
+            Enemies.Remove(e);
+            _txtEnemiesLeft.text = Enemies.Count + " enemies left";
+            if (Enemies.Count <= 0)
+            {
+                // level completed;
+                LevelCompleted();
+            }
         }
     }
 
@@ -136,11 +248,35 @@ public class TheOneScript : MonoBehaviour
     private void CameraMovement()
     {
         Vector3 offset = new Vector3(0, 5, -7);
-        Vector3 newPos = ActivePlayer.MyTrans.position + offset;
+        Vector3 newPos = ActivePlayer.Trans.position + offset;
         Vector3 smooth = Vector3.Lerp(Cam.transform.position, newPos, 0.25f);
         Cam.transform.position = smooth;
+    }
 
-        //Cam.transform.LookAt(ActivePlayer.MyTrans);
+    /// <summary>
+    /// Check if any agent has fallen of the platform and needs to die
+    /// </summary>
+    private IEnumerator CheckForDroppedAgentsRoutine()
+    {
+        var delay = new WaitForSeconds(2);
+
+        while (IsPlaying)
+        {
+            // check player
+            ActivePlayer.CheckIfFallenOfPlatform();
+            // check all enemies
+            for (int i = Enemies.Count - 1; i >= 0; i--)
+                Enemies[i].CheckIfFallenOfPlatform();
+
+            yield return delay;
+        }
+    }
+
+    private void GameOver(bool won)
+    {
+        IsPlaying = false;
+        // temp just start a new game
+        NewGame();
     }
 
     #region Level helper objects
@@ -157,6 +293,31 @@ public class TheOneScript : MonoBehaviour
 
     #region Agent helper objects
 
+    public enum AgentType
+    {
+        Enemy,
+        ChargeEnemy
+    }
+
+    public static Agent NewAgent(AgentType t, Vector3 pos, AgentStartStats stats)
+    {
+        Agent a;
+        switch(t)
+        {
+            case AgentType.Enemy:
+                a = new Enemy(pos, stats);
+                break;
+
+            case AgentType.ChargeEnemy:
+                a = new ChargeEnemy(pos, stats);
+                break;
+            default:
+                a = null;
+                break;
+        }
+        return a;
+    }
+
     [System.Serializable]
     public struct AgentStartStats
     {
@@ -166,14 +327,14 @@ public class TheOneScript : MonoBehaviour
     }
 
     [System.Serializable]
-    public class Agent
+    public abstract class Agent
     {
         public float MaxHealth;
         public float CurrentHealth;
         public float MovementSpeed;
 
-        public Transform MyTrans;
-        public Rigidbody MyRigid;
+        public Transform Trans;
+        public Rigidbody Rigid;
 
         public Agent(Vector3 pos, AgentStartStats stats)
         {
@@ -181,25 +342,24 @@ public class TheOneScript : MonoBehaviour
             MovementSpeed = stats.StartSpeed;
 
             Draw(pos);
-            MyTrans.GetComponent<Renderer>().material = stats.Mat;
+            Trans.GetComponent<Renderer>().material = stats.Mat;
         }
 
         public virtual void Draw(Vector3 pos)
         {
-            MyTrans = GameObject.CreatePrimitive(PrimitiveType.Cube).transform;
-            MyTrans.SetParent(MyTrans.transform);
-            MyTrans.localPosition = pos + new Vector3(0, 0.5f, 0);
-            MyRigid = MyTrans.gameObject.AddComponent<Rigidbody>();
+            Trans = GameObject.CreatePrimitive(PrimitiveType.Cube).transform;
+            Trans.SetParent(Trans.transform);
+            Trans.localPosition = pos + new Vector3(0, 0.5f, 0);
+            Rigid = Trans.gameObject.AddComponent<Rigidbody>();
         }
 
-        public virtual void Movement()
-        {
+        public abstract void Movement();
 
-        }
-
-        public virtual void Die()
+        protected virtual void Die()
         {
-            
+            ONE.AgentDied(this);
+            Trans.GetComponent<Collider>().enabled = false;
+            Destroy(Trans.gameObject, 2);
         }
 
         public virtual void GetHit(float damage)
@@ -214,7 +374,19 @@ public class TheOneScript : MonoBehaviour
                 CurrentHealth -= damage;
             }
         }
+
+        public void CheckIfFallenOfPlatform()
+        {
+            if (Trans == null) return;
+
+            if (Trans.position.y < 0)
+            {
+                Die();
+            }
+        }
     }
+
+
 
     [System.Serializable]
     public class Player : Agent
@@ -223,16 +395,19 @@ public class TheOneScript : MonoBehaviour
 
         public Player(Vector3 pos, AgentStartStats stats) : base(pos, stats)
         {
-            MyTrans.name = "Player";
+            Trans.name = "Player";
         }
 
         public override void Movement()
         {
-            base.Movement();
-
             var input = new Vector3(Input.GetAxisRaw("Horizontal"), 0, Input.GetAxisRaw("Vertical"));
             input = input.normalized * MovementSpeed * Time.deltaTime;
-            MyRigid.MovePosition(MyTrans.position + input);
+            Rigid.MovePosition(Trans.position + input);
+
+            if (Input.GetKeyDown(KeyCode.Space) && FloorPlane.GetDistanceToPoint(Trans.position) < 0.51f)
+            {
+                Rigid.AddForce(Vector3.up * 6, ForceMode.Impulse);
+            }
         }
 
         public void Attack()
@@ -240,23 +415,24 @@ public class TheOneScript : MonoBehaviour
             if(Input.GetMouseButton(0))
             {
                 // raycast from center of player towards mouse
-                Plane f = new Plane(Vector3.up, 0);
-                Ray r = Camera.main.ScreenPointToRay(Input.mousePosition);
+                Ray r = Cam.ScreenPointToRay(Input.mousePosition);
                 float enter;
 
-                if (f.Raycast(r, out enter))
+                if (FloorPlane.Raycast(r, out enter))
                 {
                     var pos = r.GetPoint(enter) + Vector3.up * 0.5f;
-                    var dir = (pos - MyTrans.position).normalized;
+                    var dir = (pos - Trans.position).normalized;
 
                     RaycastHit hit;
-                    if(Physics.Raycast(MyTrans.position, dir, out hit, 10))
+                    if(Physics.Raycast(Trans.position, dir, out hit, 10))
                     {
                         Debug.Log("Hit " + hit.collider.gameObject.name, hit.collider.gameObject) ;
 
-                        var enemy = ONE.Enemies.First(x => x.MyTrans == hit.collider.transform);
+                        var enemy = ONE.Enemies.First(x => x.Trans == hit.collider.transform);
+                        // apply damage
                         enemy.GetHit(1);
-                        enemy.MyTrans.GetComponent<Rigidbody>().AddForce(dir * 30);
+                        // apply knockback
+                        enemy.Trans.GetComponent<Rigidbody>().AddForce(dir * 10);
                     }
                 }
             }
@@ -268,7 +444,7 @@ public class TheOneScript : MonoBehaviour
     {
         public Enemy(Vector3 pos, AgentStartStats stats) : base (pos, stats)
         {
-            MyTrans.name = "enemy";
+            Trans.name = "enemy";
             MaxHealth = CurrentHealth *= LevelModifier;
         }
 
@@ -279,30 +455,54 @@ public class TheOneScript : MonoBehaviour
             ONE.StartCoroutine(HitAnimation());
         }
 
-        public override void Die()
-        {
-            base.Die();
-
-            ONE.EnemyDied(this);
-            MyTrans.GetComponent<Collider>().enabled = false;
-            Destroy(MyTrans.gameObject, 2);
-        }
-
         public override void Movement()
         {
-            base.Movement();
-
-            var dir = (ActivePlayer.MyTrans.position - MyTrans.position).normalized;
+            var dir = (ActivePlayer.Trans.position - Trans.position).normalized;
             dir = dir.normalized * MovementSpeed * Time.deltaTime;
-            MyRigid.MovePosition(MyTrans.position + dir);
+            Rigid.MovePosition(Trans.position + dir);
         }
 
         private IEnumerator HitAnimation()
         {
             var delay = new WaitForSeconds(0.05f);
-            MyTrans.localScale = new Vector3(0.75f, 1.25f, 0.75f);
+            Trans.localScale = new Vector3(0.75f, 1.25f, 0.75f);
             yield return delay;
-            MyTrans.localScale = Vector3.one;
+            Trans.localScale = Vector3.one;
+        }
+    }
+
+    public class ChargeEnemy : Agent
+    {
+        private float _chargePercentage = 0;
+        private bool _isChargeing = false;
+
+        public ChargeEnemy(Vector3 pos, AgentStartStats stats):base (pos, stats)
+        {
+            Trans.name = "charge enemy";
+            MaxHealth = CurrentHealth *= LevelModifier;
+        }
+
+        public override void Movement()
+        {
+            if(_isChargeing)
+            {
+                _chargePercentage += Time.deltaTime * 20;
+                if(_chargePercentage >= 100)
+                {
+                    _isChargeing = false;
+                    Rigid.AddForce(Trans.forward * 20, ForceMode.Impulse);
+                }
+
+                Trans.LookAt(ActivePlayer.Trans);
+            }
+            else
+            {
+                _chargePercentage -= Time.deltaTime * 20;
+                if (_chargePercentage <= 0)
+                {
+                    _isChargeing = true;
+                }
+            }
         }
     }
 
