@@ -30,6 +30,7 @@ public class TheOneScript : MonoBehaviour
     [Header("Player")]
     [SerializeField]
     private AgentStartStats _playerStartStats;
+    public Material PlayerMat;
 
     public static Player ActivePlayer;
 
@@ -70,8 +71,12 @@ public class TheOneScript : MonoBehaviour
         CreateNewLight();
         CreateUI();
 
+        PlayerMat = new Material(Shader.Find("Standard"));
+
         // spawn level
         NewGame();
+
+
     }
 
     #region Scene setup
@@ -323,7 +328,7 @@ public class TheOneScript : MonoBehaviour
     {
         public float StartHealth;
         public float StartSpeed;
-        public Material Mat;
+        public Color Col;
     }
 
     [System.Serializable]
@@ -342,7 +347,8 @@ public class TheOneScript : MonoBehaviour
             MovementSpeed = stats.StartSpeed;
 
             Draw(pos);
-            Trans.GetComponent<Renderer>().material = stats.Mat;
+            Trans.GetComponent<Renderer>().material = ONE.PlayerMat;
+            Trans.GetComponent<Renderer>().material.color = stats.Col;
         }
 
         public virtual void Draw(Vector3 pos)
