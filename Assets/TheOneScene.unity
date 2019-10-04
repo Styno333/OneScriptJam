@@ -152,22 +152,49 @@ MonoBehaviour:
   _playerStartStats:
     StartHealth: 100
     StartSpeed: 5
+    Weight: 1
     Col: {r: 0.44691172, g: 0.7830189, b: 0.5150416, a: 1}
-  PlayerMat: {fileID: 0}
+  Mat: {fileID: 0}
   _enemyStartStats:
     StartHealth: 50
     StartSpeed: 3
+    Weight: 0
     Col: {r: 0.46226418, g: 0.19842473, b: 0.19842473, a: 1}
   _levels:
-  - MapSize: 1
-    AmountOfEnemies: 2
-    MaxWeightToContinue: 0
-  - MapSize: 1.5
-    AmountOfEnemies: 4
-    MaxWeightToContinue: 0
-  - MapSize: 2
-    AmountOfEnemies: 6
-    MaxWeightToContinue: 0
+  - MapSize: 10
+    Wave:
+    - EnemyType: 0
+      Amount: 2
+      BasicStats:
+        StartHealth: 50
+        StartSpeed: 3
+        Weight: 0.8
+        Col: {r: 0.46226418, g: 0.19842473, b: 0.19842473, a: 1}
+  - MapSize: 9
+    Wave:
+    - EnemyType: 0
+      Amount: 3
+      BasicStats:
+        StartHealth: 50
+        StartSpeed: 2.2
+        Weight: 0.85
+        Col: {r: 0.46226418, g: 0.19842473, b: 0.19842473, a: 1}
+    - EnemyType: 1
+      Amount: 2
+      BasicStats:
+        StartHealth: 100
+        StartSpeed: 2
+        Weight: 1
+        Col: {r: 0.4627451, g: 0.30046493, b: 0.20000002, a: 1}
+  - MapSize: 8
+    Wave:
+    - EnemyType: 1
+      Amount: 5
+      BasicStats:
+        StartHealth: 100
+        StartSpeed: 2
+        Weight: 1
+        Col: {r: 0.4627451, g: 0.39619067, b: 0.20000002, a: 1}
 --- !u!4 &786873216
 Transform:
   m_ObjectHideFlags: 0

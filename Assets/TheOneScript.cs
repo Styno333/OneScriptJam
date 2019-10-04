@@ -30,7 +30,7 @@ public class TheOneScript : MonoBehaviour
     [Header("Player")]
     [SerializeField]
     private AgentStartStats _playerStartStats;
-    public Material PlayerMat;
+    [HideInInspector] public Material Mat;
 
     public static Player ActivePlayer;
 
@@ -71,7 +71,7 @@ public class TheOneScript : MonoBehaviour
         CreateNewLight();
         CreateUI();
 
-        PlayerMat = new Material(Shader.Find("Standard"));
+        Mat = new Material(Shader.Find("Standard"));
 
         // spawn level
         NewGame();
@@ -197,6 +197,11 @@ public class TheOneScript : MonoBehaviour
         if (CurrentLevel < _levels.Length - 1)
         {
             CurrentLevel++;
+            SpawnLevel();
+
+            // reset player pos
+            ActivePlayer.Trans.position = Vector3.zero;
+
             SpawnEnemies();
             _txtLevel.text = "Level " + CurrentLevel;
         }
@@ -209,9 +214,12 @@ public class TheOneScript : MonoBehaviour
 
     private void SpawnLevel()
     {
+        // todo: make floor a circle
+
         if (_floor == null)
         {
             _floor = GameObject.CreatePrimitive(PrimitiveType.Plane).transform;
+            _floor.GetComponent<MeshFilter>().mesh = _floor.GetComponent<MeshCollider>().sharedMesh = CircleMesh();
             _floor.name = "Floor";
         }
 
@@ -220,12 +228,21 @@ public class TheOneScript : MonoBehaviour
 
     private void SpawnEnemies()
     {
-        for (int i = 0; i < _levels[CurrentLevel].AmountOfEnemies; i++)
+        // todo: get total enemies to spawn
+        // spawn them on a circle around player
+        var anglePerEnemy = Mathf.PI * 2f / 10;
+
+        foreach (var e in _levels[CurrentLevel].Wave)
         {
-            Enemies.Add(new ChargeEnemy(new Vector3(4 - i, 0, 4f), _enemyStartStats));
+            for (int i = 0; i < e.Amount; i++)
+            {
+                var angle = i * anglePerEnemy;
+                var pos = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)); // new Vector3(4 - i, 0, 4f)
+                Enemies.Add(NewAgent(e.EnemyType, pos * (_levels[CurrentLevel].MapSize - 1), e.BasicStats)); // new ChargeEnemy(new Vector3(4 - i, 0, 4f), _enemyStartStats));
+            }
         }
 
-        _txtEnemiesLeft.text =_levels[CurrentLevel].AmountOfEnemies + " enemies left";
+        _txtEnemiesLeft.text = Enemies.Count + " enemies left";
     }
 
     public void AgentDied(Agent e)
@@ -290,8 +307,17 @@ public class TheOneScript : MonoBehaviour
     public struct LevelSettings
     {
         public float MapSize;
-        public int AmountOfEnemies;
-        public float MaxWeightToContinue;
+        public List<EnemySettingsForLevel> Wave;
+    }
+    /// <summary>
+    /// So this is a seperate object just so I can enter the correct values in the inspector without a dictionary..
+    /// </summary>
+    [System.Serializable]
+    public struct EnemySettingsForLevel
+    {
+        public AgentType EnemyType;
+        public int Amount;
+        public AgentStartStats BasicStats;
     }
 
     #endregion
@@ -328,6 +354,7 @@ public class TheOneScript : MonoBehaviour
     {
         public float StartHealth;
         public float StartSpeed;
+        public float Weight;
         public Color Col;
     }
 
@@ -347,7 +374,9 @@ public class TheOneScript : MonoBehaviour
             MovementSpeed = stats.StartSpeed;
 
             Draw(pos);
-            Trans.GetComponent<Renderer>().material = ONE.PlayerMat;
+
+            Trans.GetComponent<Rigidbody>().mass = stats.Weight;
+            Trans.GetComponent<Renderer>().material = ONE.Mat;
             Trans.GetComponent<Renderer>().material.color = stats.Col;
         }
 
@@ -496,7 +525,7 @@ public class TheOneScript : MonoBehaviour
                 if(_chargePercentage >= 100)
                 {
                     _isChargeing = false;
-                    Rigid.AddForce(Trans.forward * 20, ForceMode.Impulse);
+                    Rigid.AddForce(Trans.forward * 30, ForceMode.Impulse);
                 }
 
                 Trans.LookAt(ActivePlayer.Trans);
@@ -513,4 +542,46 @@ public class TheOneScript : MonoBehaviour
     }
 
     #endregion
+
+    /// <summary>
+    /// Creates a basic circle mesh
+    /// </summary>
+    /// <returns></returns>
+    public Mesh CircleMesh()
+    {
+        Mesh m = new Mesh();
+        int segments = 32;
+
+        // vertices
+        int vertCount = segments + 2;
+        int indCount = segments * 3;
+        var segmentAngle = Mathf.PI * 2f / segments;
+        var angle = 0f;
+        var verts = new List<Vector3>(vertCount);
+        var normals = new List<Vector3>(vertCount);
+        var indices = new int[indCount];
+        verts.Add(Vector3.zero);
+        normals.Add(Vector3.up);
+        for (int i = 1; i < vertCount; ++i)
+        {
+            verts.Add(new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)));
+            normals.Add(Vector3.up);
+
+            angle -= segmentAngle;
+            if(i > 1)
+            {
+                var j = (i - 2) * 3;
+                indices[j + 0] = 0;
+                indices[j + 1] = i - 1;
+                indices[j + 2] = i;
+            }
+        }
+        
+        m.SetVertices(verts);
+        m.SetNormals(normals);
+        m.SetIndices(indices, MeshTopology.Triangles, 0);
+        m.RecalculateBounds();
+
+        return m;
+    }
 }
