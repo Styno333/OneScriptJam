@@ -10,12 +10,19 @@ using UnityEngine;
 using System.Linq;
 using UnityEngine.Events;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 
 public class TheOneScript : MonoBehaviour
 {
     public static TheOneScript ONE;
     public static Plane FloorPlane = new Plane(Vector3.up, 0);
 
+    public enum GameState
+    {
+        Menu,
+        Playing,
+        BetweenRound
+    }
 
     private bool _isPlaying = false;
     public bool IsPlaying
@@ -58,6 +65,9 @@ public class TheOneScript : MonoBehaviour
     private Text _txtLevel;
     private Text _txtEnemiesLeft;
 
+    private GameObject _mainMenu;
+    private GameObject _skillMenu;
+
     // -- end UI variables
 
     public static Camera Cam;
@@ -65,21 +75,16 @@ public class TheOneScript : MonoBehaviour
 
     void Start()
     {
-        // setup
+        // INITIAL SETUP
         ONE = this;
         Cam = CreateNewCamera();
         CreateNewLight();
         CreateUI();
 
         Mat = new Material(Shader.Find("Standard"));
-
-        // spawn level
-        NewGame();
-
-
     }
 
-    #region Scene setup
+    #region Initial setup
     /// <summary>
     /// Create a new camera for the scene
     /// </summary>
@@ -106,7 +111,6 @@ public class TheOneScript : MonoBehaviour
         light.name = "Light";
         return light;
     }
-
     #endregion
 
     #region UI
@@ -116,26 +120,142 @@ public class TheOneScript : MonoBehaviour
         _font = Resources.GetBuiltinResource(typeof(Font), "Arial.ttf") as Font;
 
         // add event system
-        (new GameObject()).AddComponent<UnityEngine.EventSystems.EventSystem>().name = "EventSystem";
+        var es = (new GameObject("EventSystem")).AddComponent<UnityEngine.EventSystems.EventSystem>();
+        es.gameObject.AddComponent<StandaloneInputModule>(); 
         // create canvas
-        var canv = (new GameObject()).AddComponent<Canvas>();
-        canv.name = "Canvas";
-        canv.renderMode = RenderMode.ScreenSpaceOverlay;
-        canv.gameObject.AddComponent<CanvasScaler>();
-        canv.gameObject.AddComponent<CanvasRenderer>();
+        _canvMain = (new GameObject()).AddComponent<Canvas>();
+        _canvMain.name = "Canvas";
+        _canvMain.renderMode = RenderMode.ScreenSpaceOverlay;
+        _canvMain.gameObject.AddComponent<CanvasScaler>();
+        _canvMain.gameObject.AddComponent<CanvasRenderer>();
         // add text labels
-        _txtLevel = AddtextLabel(canv.transform, -40, "LEVEL: 0");
-        _txtEnemiesLeft = AddtextLabel(canv.transform, -70, "ENEMIES LEFT: 0");
+        _txtLevel = AddtextLabel(_canvMain.transform, new Vector2(40, -40), "LEVEL: 0", Color.white);
+        _txtEnemiesLeft = AddtextLabel(_canvMain.transform, new Vector2(40, -70), "ENEMIES LEFT: 0", Color.white);
+
+
+        CreateStartMenu();
+        CreateSkillMenu();
     }
 
-    private Text AddtextLabel(Transform canv, float height, string text)
+    private void CreateStartMenu()
+    {
+        _mainMenu = new GameObject();
+        _mainMenu.transform.SetParent(_canvMain.transform, false);
+
+        var rectT = _mainMenu.AddComponent<RectTransform>();
+        rectT.pivot = Vector2.zero;
+        rectT.anchorMin = Vector2.zero;
+        rectT.anchorMax = Vector2.one;
+        rectT.offsetMin = rectT.offsetMax = Vector2.zero;
+
+        _mainMenu.AddComponent<GraphicRaycaster>();
+
+        // add Start btn
+        var btn = AddButton(_mainMenu.transform, Vector2.zero, new Vector2(200, 50), "start game");
+        btn.onClick.AddListener(NewGame);
+    }
+
+    private void CreateSkillMenu()
+    {
+        _skillMenu = new GameObject("Skill menu");
+        _skillMenu.transform.SetParent(_canvMain.transform, false);
+
+        var rectT = _skillMenu.AddComponent<RectTransform>();
+        rectT.pivot = Vector2.zero;
+        rectT.anchorMin = Vector2.zero;
+        rectT.anchorMax = Vector2.one;
+        rectT.offsetMin = rectT.offsetMax = Vector2.zero;
+
+        _skillMenu.AddComponent<GraphicRaycaster>();
+
+        _skillMenu.SetActive(false);
+    }
+
+    public void ShowSkillMenu()
+    {
+        var lbl = AddtextLabel(_skillMenu.transform, new Vector2(0, 50), "CHOOSE A SKILL TO LEAVE BEHIND", Color.white);
+        lbl.alignment = TextAnchor.MiddleCenter;
+        lbl.rectTransform.localPosition = new Vector2(0, 200);
+        lbl.rectTransform.offsetMin = lbl.rectTransform.offsetMax = Vector2.zero;
+
+        if (ActivePlayer.CanMoveX)
+        {
+            AddButton(_skillMenu.transform, new Vector2(-100, 0), new Vector2(175, 50), "horizontal movement").onClick.AddListener(
+                () => 
+                {
+                    ActivePlayer.CanMoveX = false;
+                    AfterSkillRemoved();
+                });
+        }
+        if (ActivePlayer.CanMoveZ)
+        {
+            AddButton(_skillMenu.transform, new Vector2(100, 0), new Vector2(175, 50), "vertical movement").onClick.AddListener(
+                () =>
+                {
+                    ActivePlayer.CanMoveZ = false;
+                    AfterSkillRemoved();
+                });
+        }
+        if (ActivePlayer.CanShoot)
+        {
+            AddButton(_skillMenu.transform, new Vector2(-100, -60), new Vector2(175, 50), "shooting").onClick.AddListener(
+                () =>
+                {
+                    ActivePlayer.CanShoot = false;
+                    AfterSkillRemoved();
+                });
+        }
+        if (ActivePlayer.CanJump)
+        {
+            AddButton(_skillMenu.transform, new Vector2(100, -60), new Vector2(175, 50), "jumping").onClick.AddListener(
+                () =>
+                {
+                    ActivePlayer.CanJump = false;
+                    AfterSkillRemoved();
+                });
+        }
+
+        _skillMenu.SetActive(true);
+    }
+
+    private void CloseSkillMenu()
+    {
+        foreach(Transform t in _skillMenu.transform)
+        {
+            Destroy(t.gameObject);
+        }
+        _skillMenu.gameObject.SetActive(false);
+    }
+
+    private Button AddButton(Transform parent, Vector2 pos, Vector2 size, string txt)
+    {
+        var img = (new GameObject("Button: " + txt)).gameObject.AddComponent<Image>();
+        var btn = img.gameObject.AddComponent<Button>();
+
+        btn.transform.SetParent(parent, false);
+        img.rectTransform.anchoredPosition = pos;
+
+        img.rectTransform.sizeDelta = size;
+
+        var lbl = AddtextLabel(btn.transform, Vector2.zero, txt, Color.black);
+        lbl.alignment = TextAnchor.MiddleCenter;
+        lbl.rectTransform.localPosition = Vector2.zero;
+        lbl.rectTransform.offsetMin = lbl.rectTransform.offsetMax = Vector2.zero;
+
+        lbl.rectTransform.pivot = Vector2.zero;
+
+        return btn;
+    }
+
+    private Text AddtextLabel(Transform canv, Vector2 pos, string text, Color c)
     {
         var txt = (new GameObject()).AddComponent<Text>();
-        txt.transform.SetParent(canv.transform);
+        txt.transform.SetParent(canv.transform, false);
         txt.font = _font;
         txt.fontStyle = FontStyle.Bold;
         txt.text = text;
-        txt.rectTransform.anchoredPosition = new Vector2(40, height);
+        txt.rectTransform.anchoredPosition = pos;
+        txt.color = c;
 
         txt.rectTransform.pivot = Vector2.up;
         txt.rectTransform.anchorMin = Vector2.zero;
@@ -169,12 +289,15 @@ public class TheOneScript : MonoBehaviour
 
     private void NewGame()
     {
+        // close menu
+        _mainMenu.SetActive(false);
+
         // Reset stats
         CurrentLevel = 0;
         _txtLevel.text = "Level " + 0;
 
         // Spawn level
-        SpawnLevel();
+        UpdateMap();
 
         // Spawn player
         ActivePlayer = new Player(Vector3.zero, _playerStartStats);
@@ -187,6 +310,7 @@ public class TheOneScript : MonoBehaviour
 
         // start routines
         StartCoroutine(CheckForDroppedAgentsRoutine()); // checks for out of bounds agents
+
     }
 
     /// <summary>
@@ -197,13 +321,15 @@ public class TheOneScript : MonoBehaviour
         if (CurrentLevel < _levels.Length - 1)
         {
             CurrentLevel++;
-            SpawnLevel();
+            UpdateMap();
 
             // reset player pos
-            ActivePlayer.Trans.position = Vector3.zero;
+            ActivePlayer.Trans.position = new Vector3(0,0.75f,0);
 
-            SpawnEnemies();
             _txtLevel.text = "Level " + CurrentLevel;
+
+            ShowSkillMenu();
+            IsPlaying = false;
         }
         else
         {
@@ -212,7 +338,16 @@ public class TheOneScript : MonoBehaviour
         }
     }
 
-    private void SpawnLevel()
+    public void AfterSkillRemoved()
+    {
+        IsPlaying = true;
+        SpawnEnemies();
+        CloseSkillMenu();
+        StartCoroutine(CheckForDroppedAgentsRoutine()); // checks for out of bounds agents
+
+    }
+
+    private void UpdateMap()
     {
         // todo: make floor a circle
 
@@ -238,7 +373,7 @@ public class TheOneScript : MonoBehaviour
             {
                 var angle = i * anglePerEnemy;
                 var pos = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)); // new Vector3(4 - i, 0, 4f)
-                Enemies.Add(NewAgent(e.EnemyType, pos * (_levels[CurrentLevel].MapSize - 1), e.BasicStats)); // new ChargeEnemy(new Vector3(4 - i, 0, 4f), _enemyStartStats));
+                Enemies.Add(NewAgent(e.EnemyType, pos * (_levels[CurrentLevel].MapSize - 1), e.BasicStats));
             }
         }
 
@@ -262,6 +397,15 @@ public class TheOneScript : MonoBehaviour
                 LevelCompleted();
             }
         }
+    }
+
+    private void RemoveAllRemainingEnemies()
+    {
+        foreach (var enemy in Enemies)
+        {
+            Destroy(enemy.Trans.gameObject);
+        }
+        Enemies.Clear();
     }
 
     /// <summary>
@@ -289,7 +433,7 @@ public class TheOneScript : MonoBehaviour
             // check all enemies
             for (int i = Enemies.Count - 1; i >= 0; i--)
                 Enemies[i].CheckIfFallenOfPlatform();
-
+            Debug.Log("check");
             yield return delay;
         }
     }
@@ -297,8 +441,7 @@ public class TheOneScript : MonoBehaviour
     private void GameOver(bool won)
     {
         IsPlaying = false;
-        // temp just start a new game
-        NewGame();
+        _mainMenu.SetActive(true);
     }
 
     #region Level helper objects
@@ -414,7 +557,7 @@ public class TheOneScript : MonoBehaviour
         {
             if (Trans == null) return;
 
-            if (Trans.position.y < 0)
+            if (Trans.position.y < 0 || Trans.position.y > 20) // > 20 check added as a bugfix
             {
                 Die();
             }
@@ -426,20 +569,23 @@ public class TheOneScript : MonoBehaviour
     [System.Serializable]
     public class Player : Agent
     {
-        public float Weight = 0;
+        public bool CanMoveX, CanMoveZ, CanShoot, CanJump;
 
         public Player(Vector3 pos, AgentStartStats stats) : base(pos, stats)
         {
             Trans.name = "Player";
+            CanMoveX = CanMoveZ = CanShoot = CanJump = true;
         }
 
         public override void Movement()
         {
-            var input = new Vector3(Input.GetAxisRaw("Horizontal"), 0, Input.GetAxisRaw("Vertical"));
+            var x = CanMoveX ? Input.GetAxisRaw("Horizontal") : 0;
+            var z = CanMoveZ ? Input.GetAxisRaw("Vertical") : 0;
+            var input = new Vector3(x, 0, z);
             input = input.normalized * MovementSpeed * Time.deltaTime;
             Rigid.MovePosition(Trans.position + input);
 
-            if (Input.GetKeyDown(KeyCode.Space) && FloorPlane.GetDistanceToPoint(Trans.position) < 0.51f)
+            if (CanJump && Input.GetKeyDown(KeyCode.Space) && FloorPlane.GetDistanceToPoint(Trans.position) < 0.51f)
             {
                 Rigid.AddForce(Vector3.up * 6, ForceMode.Impulse);
             }
@@ -447,6 +593,8 @@ public class TheOneScript : MonoBehaviour
 
         public void Attack()
         {
+            if (!CanShoot) return;
+
             if(Input.GetMouseButton(0))
             {
                 // raycast from center of player towards mouse
@@ -461,9 +609,10 @@ public class TheOneScript : MonoBehaviour
                     RaycastHit hit;
                     if(Physics.Raycast(Trans.position, dir, out hit, 10))
                     {
-                        Debug.Log("Hit " + hit.collider.gameObject.name, hit.collider.gameObject) ;
+                        //Debug.Log("Hit " + hit.collider.gameObject.name, hit.collider.gameObject) ;
 
-                        var enemy = ONE.Enemies.First(x => x.Trans == hit.collider.transform);
+                        var enemy = ONE.Enemies.FirstOrDefault(x => x.Trans == hit.collider.transform);
+                        if (enemy == default) return;
                         // apply damage
                         enemy.GetHit(1);
                         // apply knockback
