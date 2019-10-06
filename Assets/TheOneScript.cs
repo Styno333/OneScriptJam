@@ -104,11 +104,11 @@ public class TheOneScript : MonoBehaviour
     /// <returns></returns>
     private Light CreateNewLight()
     {
-        var light = (new GameObject()).AddComponent<Light>();
+        var light = (new GameObject("Light")).AddComponent<Light>();
         light.type = LightType.Directional;
         light.transform.eulerAngles = new Vector3(50, -30, 0);
         light.color = new Color(1, 0.95f, 0.84f, 1f);
-        light.name = "Light";
+        light.shadows = LightShadows.Soft;
         return light;
     }
     #endregion
@@ -269,6 +269,11 @@ public class TheOneScript : MonoBehaviour
 
     void Update()
     {
+        if(Input.GetKeyDown(KeyCode.Escape))
+        {
+            Application.Quit();
+        }
+
         if (!_isPlaying) return;
 
         ActivePlayer.Movement();
@@ -441,6 +446,7 @@ public class TheOneScript : MonoBehaviour
     private void GameOver(bool won)
     {
         IsPlaying = false;
+        RemoveAllRemainingEnemies();
         _mainMenu.SetActive(true);
     }
 
